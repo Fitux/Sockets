@@ -21,125 +21,95 @@ int start_client(const char *ip_dst, const unsigned int port, const char *filena
 	int clientSocket;
 	unsigned long start, end;
 	int file;
-	char *readBuffer;
-	char *buffer;
 	
 	int localerror;
-	
-	int readBytes,totalReadBytes;
-	int writeBytes,totalWriteBytes;
 
-	char *command = NULL;
-	char *data = NULL;
-	char tmp[1];
-	char r;
-	char n;
-	int mode;
-	int filesize;
+	char *command;
+	char **data;
+	char *buffer;
+
+	int filesize, readData;
 
 	clientSocket = newTCPClientSocket4(ip_dst,port);
 
 	buffer = (char *) calloc(1,BUFFERSIZE);
-	bzero(buffer,sizeof(buffer));
+	data = (char **) calloc(1,255*sizeof(char*));
+	command = (char *) calloc(1,255);
+
+	//SEND GET
+	memset(buffer,0,BUFFERSIZE);
 	strcpy(buffer,"GET:");
 	strcat(buffer,filename);
 	strcat(buffer,"\r\n");
 
-	totalWriteBytes = 0;
-	while(totalWriteBytes < strlen(buffer)) 
-	{
-		writeBytes = write(clientSocket,buffer+totalWriteBytes,strlen(buffer)-totalWriteBytes);
-		totalWriteBytes += writeBytes;
-	}
-	
+	sendTCPLine4(clientSocket,buffer,BUFFERSIZE);
+	debug(4,"Sent: %s", buffer);
+
 	//Read OK or NOTFOUND
-	bzero(data,sizeof(data));
-	bzero(command,sizeof(command));
-	strcpy(data,"");
-	strcpy(command,"");
-	r = 0;
-	n = 0;
-	mode = 0;
-	while(r != '\r' && n != '\n' && (readBytes = read(clientSocket, tmp, 1)) > 0)
-	{
-		r = n;
-		n = tmp[0];
+	memset(data,0,255*sizeof(char*));
+	memset(command,0,255);
+	memset(buffer,0,BUFFERSIZE);
 
-		if(n == ':')
-			mode=1;
+	while(readTCPLine4(clientSocket,buffer,BUFFERSIZE)==0);
+	debug(5,"Read: %s",buffer);
+	command = getCommand(buffer,data);
 
-		if(n != '\r' && n != '\n' && n != ':')
-		{
-			if(mode==0)
-				strcat(command,tmp);
-			else
-				strcat(data,tmp);
-		}
 
-	}
-
-	debug(5,"\tComando: %s",command);
+	debug(4,"Comando: %s",command);
 
 	if(strcmp(command,"OK")!=0)
 	{
-		debug(5,"\tComando incorrecto");
-		free(buffer);	
+		debug(5,"Comando incorrecto");
+		free(command);
+		free(data);
+		free(buffer);		
 		closeTCPSocket(clientSocket);
-		return NULL;
+		return false;
 	}
+
+	//SEND OK
+	memset(buffer,0,BUFFERSIZE);
+	strcpy(buffer,"OK");
+	strcat(buffer,"\r\n");
+
+	sendTCPLine4(clientSocket,buffer,BUFFERSIZE);
+	debug(4,"Sent: %s", buffer);
 
 	//Read Size
-	bzero(data,sizeof(data));
-	bzero(command,sizeof(command));
-	strcpy(data,"");
-	strcpy(command,"");
-	r = 0;
-	n = 0;
-	mode = 0;
-	while(r != '\r' && n != '\n' && (readBytes = read(clientSocket, tmp, 1)) > 0)
-	{
-		r = n;
-		n = tmp[0];
+	memset(data,0,255*sizeof(char*));
+	memset(command,0,255);
+	memset(buffer,0,BUFFERSIZE);
 
-		if(n == ':')
-			mode=1;
+	while(readTCPLine4(clientSocket,buffer,BUFFERSIZE)==0);
+	debug(5,"Read: %s",buffer);
+	command = getCommand(buffer,data);
 
-		if(n != '\r' && n != '\n' && n != ':')
-		{
-			if(mode==0)
-				strcat(command,tmp);
-			else
-				strcat(data,tmp);
-		}
-
-	}
-
-	debug(5,"\tComando: %s",command);
+	debug(4,"Comando: %s",command);
 
 	if(strcmp(command,"SIZE")!=0)
 	{
-		debug(5,"\tComando incorrecto");
-		free(buffer);	
+		debug(5,"Comando incorrecto");
+		free(command);
+		free(data);
+		free(buffer);		
 		closeTCPSocket(clientSocket);
-		return NULL;
+		return false;
 	}
 
-	filesize = atoi(data);
+	filesize = atoi(data[0]);
 
 	//SEND OK
-	bzero(buffer,sizeof(buffer));
-	strcpy(buffer,"OK\r\n");
+	memset(buffer,0,BUFFERSIZE);
+	strcpy(buffer,"OK");
+	strcat(buffer,"\r\n");
 
-	totalWriteBytes = 0;
-	while(totalWriteBytes < strlen(buffer)) 
-	{
-		writeBytes = write(clientSocket,buffer+totalWriteBytes,strlen(buffer)-totalWriteBytes);
-		totalWriteBytes += writeBytes;
-	}
+	sendTCPLine4(clientSocket,buffer,BUFFERSIZE);
+	debug(4,"Sent: %s", buffer);
 	
 	//OPEN FILE
-	if((file = open(filename,O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP)) == -1) 
+	if((file = open("ola",O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP)) == -1) 
 	{
+		debug(5,"Error creating file: %s", filename);
 		localerror = errno;
 		fprintf(stderr,"Can't open file for write (%s)\n",strerror(localerror));
 		return false;
@@ -147,78 +117,64 @@ int start_client(const char *ip_dst, const unsigned int port, const char *filena
 	
 
 	//READ FILE AND SAVE
-	readBuffer = (char *) calloc(1,BUFFERSIZE);
 	start = currentTimeMillis();
-	totalReadBytes = 0;
-	
-	while((readBytes = read(clientSocket,readBuffer,BUFFERSIZE)) > 0) 
-	{
-		debug(5,"\tSe leyeron de %s:%u %u bytes",ip_dst,port,writeBytes);
-		totalWriteBytes = 0;
-		while(totalWriteBytes < readBytes) 
-		{
-			writeBytes = write(file,readBuffer+totalWriteBytes,readBytes-totalWriteBytes);
-			totalWriteBytes += writeBytes;
-		}
-		end = currentTimeMillis();
+	readData = 0;
+	debug(4,"Writing in file: %s", filename);
 
-		printf("\rRecibido a %s:%u\t%lu\tKBps",ip_dst,port,(readBytes/(end-start)*1000/1024));
+	while((readData += readTCPLine4(clientSocket,buffer,BUFFERSIZE))>0) 
+	{	
+		write(file,buffer,BUFFERSIZE);
+		debug(5,"Save to file: %s",buffer);	
+		memset(buffer,0,BUFFERSIZE);
 
-		totalReadBytes += readBytes;
-		start = currentTimeMillis();
+		if(readData>filesize)
+			break;
 	}
+
+	start = currentTimeMillis();
 
 	close(file);
-	free(readBuffer);
 
-	//SEND BYE
-	bzero(buffer,sizeof(buffer));
-	strcpy(buffer,"BYE\r\n");
+	//SEND OK
+	memset(buffer,0,BUFFERSIZE);
+	strcpy(buffer,"OK");
+	strcat(buffer,"\r\n");
 
-	totalWriteBytes = 0;
-	while(totalWriteBytes < strlen(buffer)) 
-	{
-		writeBytes = write(clientSocket,buffer+totalWriteBytes,strlen(buffer)-totalWriteBytes);
-		totalWriteBytes += writeBytes;
-	}
+	sendTCPLine4(clientSocket,buffer,BUFFERSIZE);
+	debug(4,"Sent: %s", buffer);
 
-	//READ BYE
-	bzero(data,sizeof(data));
-	bzero(command,sizeof(command));
-	strcpy(data,"");
-	strcpy(command,"");
-	r = 0;
-	n = 0;
-	mode = 0;
-	while(r != '\r' && n != '\n' && (readBytes = read(clientSocket, tmp, 1)) > 0)
-	{
-		r = n;
-		n = tmp[0];
+	//Read BYE
+	memset(data,0,255*sizeof(char*));
+	memset(command,0,255);
+	memset(buffer,0,BUFFERSIZE);
 
-		if(n == ':')
-			mode=1;
+	while(readTCPLine4(clientSocket,buffer,BUFFERSIZE)==0);
+	debug(5,"Read: %s",buffer);
+	command = getCommand(buffer,data);
 
-		if(n != '\r' && n != '\n' && n != ':')
-		{
-			if(mode==0)
-				strcat(command,tmp);
-			else
-				strcat(data,tmp);
-		}
-
-	}
-
-	debug(5,"\tComando: %s",command);
+	debug(4,"Comando: %s",command);
 
 	if(strcmp(command,"BYE")!=0)
 	{
-		debug(5,"\tComando incorrecto");
-		free(buffer);	
+		debug(5,"Comando incorrecto");
+		free(command);
+		free(data);
+		free(buffer);		
 		closeTCPSocket(clientSocket);
-		return NULL;
+		return false;
 	}
 
-	free(buffer);
+	//SEND BYE
+	memset(buffer,0,BUFFERSIZE);
+	strcpy(buffer,"BYE");
+	strcat(buffer,"\r\n");
+
+	sendTCPLine4(clientSocket,buffer,BUFFERSIZE);
+	debug(4,"Sent: %s", buffer);
+
+	free(command);
+	free(data);
+	free(buffer);	
 	closeTCPSocket(clientSocket);
 	
 	return true;

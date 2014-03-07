@@ -119,8 +119,8 @@ void printHelp(const char *cmd, const short error, const char *msg) {
 		fprintf(stderr,"Error: %s\n\n",msg);
 	}
 	
-	printf("Use:\t%s -t [options] FILENAME for server ( transmiter )\n", cmd);
-	printf("Use:\t%s -r [options] FILENAME for client ( receiver ) \n", cmd);
+	printf("Use:\t%s -t [options] ( transmiter )\n", cmd);
+	printf("Use:\t%s -r FILENAME [options] ( receiver ) \n", cmd);
 	printf("\n");
 	printf("Global Options:\n");
 	printf("\t-p\t Set port number to work on (Default %u)\n",CONFIG_DEFAULT_PORT);

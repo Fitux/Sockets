@@ -1,10 +1,12 @@
-/*
- *
- */
+/**
+  @file tcp.c
+  @brief Funciones generales para trabajar con un Socket de tipo TCP
 
-#include "../utils/debug.h"
+  @author Alvaro Parres
+  @date Feb/2013
 
-#include <stdlib.h> 
+*/
+
 #include <stdio.h>
 #include <stdarg.h>
 #include <sys/socket.h>
@@ -16,10 +18,14 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+
+#include "debug.h"
+
 int getNewTCPSocket(int addrType);
 
 int buildAddr4(struct sockaddr_in *addr, const char *ip, const u_short port);
 void sendStatus(const int socket, char *status_code);
+off_t fsize(const char *filename);
 
 int newTCPServerSocket4(const char *ip, const unsigned short port, const int q_size) {
 	int socketFD;
@@ -55,7 +61,7 @@ int buildAddr4(struct sockaddr_in *addr, const char *ip, const u_short port) {
 	int status;
 	int localerror;
 
-	memset(addr,0,sizeof(sockaddr_in));
+	bzero(addr, sizeof(addr));
 	addr->sin_family = AF_INET;
 	status = inet_pton(AF_INET,ip,&(addr->sin_addr.s_addr));
 	if(status == 0) {
@@ -146,7 +152,7 @@ int newTCPClientSocket4(const char *ip, const u_short port) {
 int readTCPLine4(const int socket, char *buffer, const unsigned int maxRead ) {
 	char *ptr;
 	int byte;
-	unsigned int readBytes;
+	int readBytes;
 	
 	ptr = buffer;
 	readBytes = 0;
@@ -176,7 +182,7 @@ int sendTCPLine4(const int socket, char *buffer, const unsigned int size ) {
 		sentBytes += writeBytes;
 	}
 	
-	debug(6,"Sent %i Bytes\n",sentBytes);
+	debug(4,"Se enviaron %i Byte\n",sentBytes);
 	
 	return sentBytes;
 }
@@ -193,32 +199,11 @@ void sendStatus(const int socket, char *status_code){
 	return;
 }
 
-char *getCommand(char *buffer, char **args) 
-{
-    char *pch;
-    char *command;
-    int cont=0;
+off_t fsize(const char *filename) {
+    struct stat st; 
 
-    command = (char *)calloc (255,1);
+    if (stat(filename, &st) == 0)
+        return st.st_size;
 
-    pch = strtok (buffer," :\r\n"); 
-
-    while (pch != NULL)
-	{
-		if(strlen(command) == 0)
-		{
-			strcpy(command, pch);
-		}
-		else if(args[cont] == NULL || strlen(args[cont]) == 0)
-		{	
-			if(args[cont] == NULL)
-				args[cont] = (char *)calloc (255,1);
-			strcpy(args[cont], pch);
-			cont++;
-		}	
-	
-		pch = strtok(NULL, " :\r\n");
-	}
-
-    return command; 
+    return -1; 
 }
